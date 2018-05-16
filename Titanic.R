@@ -136,4 +136,73 @@ ggplot(full[1:891,], aes(Age, fill = factor(Survived))) +
   geom_histogram() + 
   # I include Sex since we know (a priori) it's a significant predictor
   facet_grid(.~Sex) + 
+  theme_few() 
+
+
+# Create the column child, and indicate whether child or adult
+full$Child[full$Age < 18] <- 'Child'
+full$Child[full$Age >= 18] <- 'Adult'
+
+# Show counts
+table(full$Child, full$Survived)
+
+# Adding Mother variable
+full$Mother <- 'Not Mother'
+full$Mother[full$Sex == 'female' & full$Parch > 0 & full$Age > 18 & full$Title != 'Miss'] <- 'Mother'
+
+# Show counts
+table(full$Mother, full$Survived)
+
+# Finish by factorizing our two new factor variables
+full$Child  <- factor(full$Child)
+full$Mother <- factor(full$Mother)
+
+md.pattern(full)
+
+# Split the data back into a train set and a test set
+train <- full[1:891,]
+test <- full[892:1309,]
+
+set.seed(754) # command give same result every time
+
+# Build the model (note: not all possible variables are used)
+rf_model <- randomForest(factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + 
+                           Fare + Embarked + Title + 
+                           FsizeD + Child + Mother,
+                         data = train)
+# Show model error
+plot(rf_model, ylim=c(0,0.36))
+legend('topright', colnames(rf_model$err.rate), col=1:3, fill=1:3)
+
+  # The black line shows the overall error rate which falls below 20%. 
+  #The red and green lines show the error rate for 'died' and 'survived' respectively. 
+  #We can see that right now we're much more successful predicting death than we are survival. 
+  #What does that say about me, I wonder?
+
+# Get importance
+importance    <- importance(rf_model)
+varImportance <- data.frame(Variables = row.names(importance), 
+                            Importance = round(importance[ ,'MeanDecreaseGini'],2))
+
+# Create a rank variable based on importance
+rankImportance <- varImportance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rankImportance, aes(x = reorder(Variables, Importance), 
+                           y = Importance, fill = Importance)) +
+  geom_bar(stat='identity') + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+            hjust=0, vjust=0.55, size = 4, colour = 'red') +
+  labs(x = 'Variables') +
+  coord_flip() + 
   theme_few()
+
+# Predict using the test set
+prediction <- predict(rf_model, test)
+
+# Save the solution to a dataframe with two columns: PassengerId and Survived (prediction)
+solution <- data.frame(PassengerID = test$PassengerId, Survived = prediction)
+
+# Write the solution to file
+write.csv(solution, file = 'rf_mod_Solution.csv', row.names = F)
